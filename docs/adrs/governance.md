@@ -9,6 +9,9 @@ Draft
 Enable two way relay from decentralized to and from centralized.
 
 - References
+  - [SLSA: BuildEnv L3: Hardware-attested build environment](https://github.com/slsa-framework/slsa/blob/c9ea020c963df7941a29fdd21ea6303406ae7b34/docs/spec/draft/attested-build-env-levels.md)
+  - [slsa-framework/slsa#977: Workstream: SLSA Build L4](https://github.com/slsa-framework/slsa/issues/977)
+    - [slsa-framework/slsa#873: Semantic equivalency, reproducible builds, and a new "verifiable build" track](https://github.com/slsa-framework/slsa/issues/873)
   - [publicdomainrelay/patterns: Towards Transparent Representation](https://github.com/publicdomainrelay/patterns)
 
 ## Requirements
@@ -50,7 +53,7 @@ data:
     - '...'
 actions:
 - name: mod_owners
-  runs-on: slsa-l4-reproducable-wasm
+  runs-on: slsa-l4
   steps:
   # TODO Figure out where reproducable-wasm source is, more policy to okay?
   # - uses: actions/checkout@v4
@@ -109,7 +112,7 @@ data:
   - '...'
 actions:
 - name: mod_elect
-  runs-on: slsa-l4-attested-risc-v
+  runs-on: slsa-l3
   steps:
   - uses: zkrollup
     with:
