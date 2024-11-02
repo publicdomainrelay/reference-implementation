@@ -10,6 +10,14 @@ curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/k
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kubectl-create-workspace-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kubectl-kcp-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kubectl-ws-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
+
+export CUE_EXPERIMENT=evalv3
+# https://cuelang.org/docs/howto/embed-files-in-cue-evaluation/
+export CUE_EXPERIMENT=embed
+export CUE_SETUP_DIR=cache/setup/cue
+export CUE_VERSION=v0.11.0-alpha.4
+curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${CUE_VERSION}/checksums.txt"
+curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${CUE_VERSION}/cue_${CUE_VERSION}_linux_amd64.tar.gz"
 ```
 
 ## Philosophy
