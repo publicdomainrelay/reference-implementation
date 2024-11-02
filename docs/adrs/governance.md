@@ -108,10 +108,12 @@ data:
   public_key_servers:
   - '...'
 actions:
-- name: elect
+- name: mod_elect
   runs-on: slsa-l4-attested-risc-v
   steps:
   - uses: zkrollup
     with:
       public_key_servers: ${{ inputs.signer_servers }}
+- name: mod_policy
+  uses: '.github/workflows/mod_policy.yml'
 ```
