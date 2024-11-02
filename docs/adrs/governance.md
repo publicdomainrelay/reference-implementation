@@ -25,16 +25,15 @@ Enable two way relay from decentralized to and from centralized.
 
 ```yaml
 name: 'branch_name Maintainers'
-branch: 'branch_name'
 deny:
-- name: 'Deny owners modifications without sign off from current owners'
-  action: 'mod_owners'
-allow:
+- name: 'Deny owner additions without sign off from current owners'
+  action: 'add_owner'
+applies_to:
 - 'branch_name'
 - 'branch_name_mod_policy_.*'
 pending_changes:
 - nonce: '... UUID for pending change ...'
-  action: mod_owners
+  action: add_owner
   inputs:
     new_key_public: '...'
     new_key_revocation: '...'
@@ -65,7 +64,7 @@ data:
     revocation:
     - '...'
 actions:
-- name: mod_owners
+- name: add_owner
   runs-on: slsa-l4
   steps:
   # TODO Figure out where reproducable-wasm source is, more policy to okay?
@@ -98,13 +97,12 @@ Expanded form of action `add_owner`
 
 ```yaml
 name: 'branch_name Elect'
-branch: 'branch_name'
 deny:
 - name: 'Deny changes to elect without representation'
   action: 'mod_elect'
 - name: 'Deny changes to policy without representation'
   action: 'mod_policy'
-allow:
+applies_to:
 - 'branch_name'
 - 'branch_name_mod_elect_.*'
 - 'branch_name_mod_policy_.*'
