@@ -31,15 +31,23 @@ deny:
   action: 'mod_owners'
 allow:
 - 'branch_name'
-- 'branch_name_mod_policy_.*"
+- 'branch_name_mod_policy_.*'
 pending_changes:
-- action: mod_owners
+- nonce: '... UUID for pending change ...'
+  action: mod_owners
   inputs:
     new_key_public: '...'
     new_key_revocation: '...'
     new_owner: 'Eve'
     signer_keys: '$this.data.public_keys'
 data:
+  pending_changes:
+  # TODO Document process and how Alice signs next then they remove once Eve is
+  # added. Then document secret sharing and further abstract privilege levels in
+  # further ADRs, eventually get to dynamic based on more policy
+  - nonce: '... UUID for pending change ...'
+    cnonce: '... UUID ...'
+    owner: 'Bob'
   secrets:
   - name: 'Apple'
     expected:
@@ -98,8 +106,8 @@ deny:
   action: 'mod_policy'
 allow:
 - 'branch_name'
-- 'branch_name_mod_elect_.*"
-- 'branch_name_mod_policy_.*"
+- 'branch_name_mod_elect_.*'
+- 'branch_name_mod_policy_.*'
 pending_changes:
 - action: elect_mod
   inputs:
