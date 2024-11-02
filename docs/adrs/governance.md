@@ -40,6 +40,11 @@ pending_changes:
     new_owner: 'Eve'
     signer_keys: '$this.data.public_keys'
 data:
+  secrets:
+  - name: 'Apple'
+    expected:
+      alg: 'sha384'
+      digest: '...'
   public_keys:
   - owner: 'Bob'
     keys:
