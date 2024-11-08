@@ -18,6 +18,7 @@ tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kcp_${KCP_VERSION}_linux_a
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-create-workspace-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-kcp-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-ws-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
+export PATH="${PWD}/${KCP_INSTALL_DIR}/bin:${PATH}"
 
 export CUE_SETUP_DIR=cache/setup/cue
 export CUE_INSTALL_DIR=cache/install/cue
@@ -30,6 +31,7 @@ curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/c
 curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/cue-lang/cue/releases/download/v${CUE_VERSION}/cue_v${CUE_VERSION}_linux_amd64.tar.gz"
 mkdir -pv "${CUE_INSTALL_DIR}"
 tar -xvz -C "${CUE_INSTALL_DIR}" -f "${CUE_SETUP_DIR}/cue_v${CUE_VERSION}_linux_amd64.tar.gz"
+export PATH="${PWD}/${CUE_INSTALL_DIR}:${PATH}"
 ```
 
 ## Philosophy
