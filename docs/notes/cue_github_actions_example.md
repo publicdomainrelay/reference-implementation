@@ -1,5 +1,18 @@
 # CUE GitHub Actions Example
 
+It's policy updating code updating policy (using cue bindings for typescript via deno within exec from policy)
+
+Then you're Federating that
+
+Look into cue modules to see if they assist as they are already ORAS for registry (then add SCITT to secure the modules in ad-hoc registries)
+
+## Objectives
+
+- Policy as Code
+- Federation of Policy as Code
+
+## Engineering Logs
+
 [![asciinema-cue-github-actions-example](https://asciinema.org/a/688045.svg)](https://asciinema.org/a/688045)
 
 ```bash
@@ -103,3 +116,6 @@ git commit -m "ci: added new release workflow" # example message
     - Phase 1: GitHub SaaS
     - Phase 2: (SCITT) Policy Engine (This will become the "firewall" to Forgejo)
     - Phase 3: Forgejo
+- https://registry.cue.works
+- https://cuelang.org/docs/concept/how-cue-works-with-go/#using-cues-go-api
+- https://cuelang.org/docs/concept/modules/
