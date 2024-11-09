@@ -13,6 +13,8 @@ Enable two way relay from decentralized to and from centralized.
   - [slsa-framework/slsa#977: Workstream: SLSA Build L4](https://github.com/slsa-framework/slsa/issues/977)
     - [slsa-framework/slsa#873: Semantic equivalency, reproducible builds, and a new "verifiable build" track](https://github.com/slsa-framework/slsa/issues/873)
   - [publicdomainrelay/patterns: Towards Transparent Representation](https://github.com/publicdomainrelay/patterns)
+  - [Git Tools - Signing Your Work](https://git-scm.com/book/en/v2/Git-Tools-Signing-Your-Work)
+  - [Alice Engineering Comms: 2023-10-25 Engineering Logs](https://github.com/dffml/dffml/blob/main/docs/discussions/alice_engineering_comms/0431/reply_0000.md)
 
 ## Requirements
 
@@ -26,8 +28,10 @@ Enable two way relay from decentralized to and from centralized.
 - Revocations for keys within `data`
 - Policy which applies to all policies? Flows to check all other policies
 - Document process and how Alice signs next then they remove once Eve is
-  added. Then document secret sharing and further abstract privilege levels in
-  further ADRs, eventually get to dynamic based on more policy
+  added.
+  - Then document secret sharing and further abstract privilege levels in
+    further ADRs
+  - Eventually get to dynamic based on more policy
 - Figure out where `runs-on: reproducable-wasm` source is, more policy to okay?
   - For instance, running some `uses: actions/checkout@v4` via IPVM
 
@@ -38,22 +42,24 @@ Enable two way relay from decentralized to and from centralized.
 - Run all `deny` actions
 
 ```bash
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "DATA_PUBLIC_KEY_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
 ```
 
 ```bash
 export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
 export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
 export POLICY_YAML_PATH="${LOCAL_OPERATION_CACHE_DIR}/policy.yaml"
-export DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.public_keys.json"
-export NEXT_DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.public_keys.json"
+export DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
+export NEXT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.owners.json"
 mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
-echo '[{}]' > "${DATA_PUBLIC_KEY_JSON_PATH}"
-jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
-cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
-jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
-cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.public_keys = load(strenv(DATA_PUBLIC_KEY_JSON_PATH))' | tee "${POLICY_YAML_PATH}"
+echo '[{}]' > "${DATA_OWNERS_JSON_PATH}"
+jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
+jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
+jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.owners = load(strenv(DATA_OWNERS_JSON_PATH))' | tee "${POLICY_YAML_PATH}"
 ```
 
 ```yaml
@@ -74,14 +80,18 @@ data:
     inputs:
       key_public: '...'
       owner: 'Eve'
-  public_keys:
+  owners:
   - actors:
     - '@bob@scitt.bob.chadig.com'
-    keys:
+    emails:
+    - 'bob@scitt.bob.chadig.com'
+    public_keys:
     - '...'
   - actors:
     - '@alice@scitt.alice.chadig.com'
-    keys:
+    emails:
+    - 'alice@scitt.alice.chadig.com'
+    public_keys:
     - '...'
   secrets:
   - name: 'Apple'
