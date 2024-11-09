@@ -23,6 +23,20 @@ Enable two way relay from decentralized to and from centralized.
 
 ### Maintainers
 
+```bash
+export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
+export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
+export DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.public_keys.json"
+export NEXT_DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.public_keys.json"
+mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
+echo '[{}]' > "${DATA_PUBLIC_KEY_JSON_PATH}"
+jq --arg owner "$USER" '.[0].owner = $owner' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
+cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
+jq --arg public_key "$(gpg --export --armor $(git config user.email))" '.[0].public_key = $public_key' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
+cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.public_keys = load(strenv(DATA_PUBLIC_KEY_JSON_PATH))'
+```
+
 ```yaml
 name: 'branch_name Maintainers'
 deny:
