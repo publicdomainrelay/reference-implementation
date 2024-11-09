@@ -4,10 +4,18 @@
 
 [![setup-kcp-and-cue](https://asciinema.org/a/687943.svg)](https://asciinema.org/a/687943)
 
+To execute setup:
+
 ```bash
-export KCP_SETUP_DIR=cache/setup/kcp
-export KCP_INSTALL_DIR=cache/install/kcp
+python -m mistletoe CONTRIBUTING.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "PATH" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+```
+
+Setup:
+
+```bash
 export KCP_VERSION=0.26.0
+export KCP_SETUP_DIR="cache/setup/kcp/${KCP_VERSION}"
+export KCP_INSTALL_DIR="cache/install/kcp/${KCP_VERSION}"
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kcp_${KCP_VERSION}_checksums.txt"
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kcp_${KCP_VERSION}_linux_amd64.tar.gz"
 curl --create-dirs --output-dir "${KCP_SETUP_DIR}" -fLOC - "https://github.com/kcp-dev/kcp/releases/download/v${KCP_VERSION}/kubectl-create-workspace-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
@@ -18,11 +26,17 @@ tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kcp_${KCP_VERSION}_linux_a
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-create-workspace-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-kcp-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
 tar -xvz -C "${KCP_INSTALL_DIR}" -f "${KCP_SETUP_DIR}/kubectl-ws-plugin_${KCP_VERSION}_linux_amd64.tar.gz"
-export PATH="${PWD}/${KCP_INSTALL_DIR}/bin:${PATH}"
+LINE="export PATH=\"${PWD}/${KCP_INSTALL_DIR}/bin:\${PATH}\""
+for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
+  if ! grep -qxF "$LINE" "$FILE"; then
+    echo "$LINE" >> "$FILE"
+  fi
+done
+. "${HOME}/.bashrc"
 
-export CUE_SETUP_DIR=cache/setup/cue
-export CUE_INSTALL_DIR=cache/install/cue
 export CUE_VERSION=0.11.0-alpha.5
+export CUE_SETUP_DIR="cache/setup/cue/${CUE_VERSION}"
+export CUE_INSTALL_DIR="cache/install/cue/${CUE_VERSION}"
 # https://cuelang.org/docs/howto/embed-files-in-cue-evaluation/
 # export CUE_EXPERIMENT=embed=true
 # export CUE_EXPERIMENT=modules=true
@@ -31,7 +45,13 @@ curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/c
 curl --create-dirs --output-dir "${CUE_SETUP_DIR}" -fLOC - "https://github.com/cue-lang/cue/releases/download/v${CUE_VERSION}/cue_v${CUE_VERSION}_linux_amd64.tar.gz"
 mkdir -pv "${CUE_INSTALL_DIR}"
 tar -xvz -C "${CUE_INSTALL_DIR}" -f "${CUE_SETUP_DIR}/cue_v${CUE_VERSION}_linux_amd64.tar.gz"
-export PATH="${PWD}/${CUE_INSTALL_DIR}:${PATH}"
+LINE="export PATH=\"${PWD}/${CUE_INSTALL_DIR}:\${PATH}\""
+for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
+  if ! grep -qxF "$LINE" "$FILE"; then
+    echo "$LINE" >> "$FILE"
+  fi
+done
+. "${HOME}/.bashrc"
 ```
 
 ## Philosophy
