@@ -53,4 +53,20 @@ for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
   fi
 done
 . "${HOME}/.bashrc"
+
+export YQ_VERSION=4.44.3
+export YQ_SETUP_DIR="cache/setup/yq/${YQ_VERSION}"
+export YQ_INSTALL_DIR="cache/install/yq/${YQ_VERSION}"
+curl --create-dirs --output-dir "${YQ_SETUP_DIR}" -fLOC - "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/checksums"
+curl --create-dirs --output-dir "${YQ_SETUP_DIR}" -fLOC - "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64.tar.gz"
+mkdir -pv "${YQ_INSTALL_DIR}"
+tar -xvz -C "${YQ_INSTALL_DIR}" -f "${YQ_SETUP_DIR}/yq_linux_amd64.tar.gz"
+mv -v "${YQ_INSTALL_DIR}/yq_linux_amd64" "${YQ_INSTALL_DIR}/yq"
+LINE="export PATH=\"${PWD}/${YQ_INSTALL_DIR}:\${PATH}\""
+for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
+  if ! grep -qxF "$LINE" "$FILE"; then
+    echo "$LINE" >> "$FILE"
+  fi
+done
+. "${HOME}/.bashrc"
 ```
