@@ -99,10 +99,15 @@ data:
       alg: 'sha384'
       digest: '...'
 actions:
-- name: add_owner
+- name: verify_mod_owner
   description: 'Deny owner additions without sign off from current owners'
-  runs-on: slsa-l4
   steps:
+  - uses: 'publicdomainrelay/verify-mod-owner@main'
+- name: add_owner
+  description: 'Add a new owner'
+  runs-on: physically-secured-owner-device
+  steps:
+  - uses: 'publicdomainrelay/add-owner@main'
 ```
 
 Expanded form of action `add_owner`
