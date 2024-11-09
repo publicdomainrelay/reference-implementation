@@ -44,15 +44,16 @@ python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.As
 ```bash
 export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
 export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
+export POLICY_YAML_PATH="${LOCAL_OPERATION_CACHE_DIR}/policy.yaml"
 export DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.public_keys.json"
 export NEXT_DATA_PUBLIC_KEY_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.public_keys.json"
 mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
 echo '[{}]' > "${DATA_PUBLIC_KEY_JSON_PATH}"
-jq --arg owner "$USER" '.[0].owner = $owner' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
+jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
 cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
-jq --arg public_key "$(gpg --export --armor $(git config user.email))" '.[0].keys = [$public_key]' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
+jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${DATA_PUBLIC_KEY_JSON_PATH}" | tee "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}"
 cat "${NEXT_DATA_PUBLIC_KEY_JSON_PATH}" | tee "${DATA_PUBLIC_KEY_JSON_PATH}" | jq
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.public_keys = load(strenv(DATA_PUBLIC_KEY_JSON_PATH))'
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.public_keys = load(strenv(DATA_PUBLIC_KEY_JSON_PATH))' | tee "${POLICY_YAML_PATH}"
 ```
 
 ```yaml
@@ -74,10 +75,12 @@ data:
       key_public: '...'
       owner: 'Eve'
   public_keys:
-  - owner: 'Bob'
+  - actors:
+    - '@bob@scitt.bob.chadig.com'
     keys:
     - '...'
-  - owner: 'Alice'
+  - actors:
+    - '@alice@scitt.alice.chadig.com'
     keys:
     - '...'
   secrets:
