@@ -8,6 +8,7 @@ To execute setup:
 
 ```bash
 python -m mistletoe CONTRIBUTING.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "PATH" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+. "${HOME}/.bashrc"
 ```
 
 Setup:
