@@ -21,7 +21,21 @@ Enable two way relay from decentralized to and from centralized.
 
 ## Examples
 
+### TODO
+
+- Revocations for keys within `data`
+- Policy which applies to all policies? Flows to check all other policies
+- Document process and how Alice signs next then they remove once Eve is
+  added. Then document secret sharing and further abstract privilege levels in
+  further ADRs, eventually get to dynamic based on more policy
+- Figure out where `runs-on: reproducable-wasm` source is, more policy to okay?
+  - For instance, running some `uses: actions/checkout@v4` via IPVM
+
 ### Maintainers
+
+- Apply policy to branches in `applies_to`
+- Create branch per `mod_branch`
+- Run all `deny` actions
 
 ```bash
 python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "DATA_PUBLIC_KEY_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
@@ -44,49 +58,38 @@ python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.As
 ```yaml
 name: 'branch_name Maintainers'
 deny:
-- name: 'Deny owner additions without sign off from current owners'
   action: 'add_owner'
 applies_to:
 - 'branch_name'
-- 'branch_name_mod_policy_.*'
-pending_changes:
-- nonce: '... UUID for pending change ...'
-  action: add_owner
-  inputs:
-    new_key_public: '...'
-    new_key_revocation: '...'
-    new_owner: 'Eve'
-    signer_keys: '$this.data.public_keys'
+mod_branch:
+- '_mod_policy_'
 data:
   pending_changes:
-  # TODO Document process and how Alice signs next then they remove once Eve is
-  # added. Then document secret sharing and further abstract privilege levels in
-  # further ADRs, eventually get to dynamic based on more policy
   - nonce: '... UUID for pending change ...'
-    cnonce: '... UUID ...'
-    owner: 'Bob'
+    action: add_owner
+    signers:
+    - cnonce: '... UUID ...'
+      owner: 'Bob'
+    inputs:
+      key_public: '...'
+      owner: 'Eve'
+  public_keys:
+  - owner: 'Bob'
+    keys:
+    - '...'
+  - owner: 'Alice'
+    keys:
+    - '...'
   secrets:
   - name: 'Apple'
     expected:
       alg: 'sha384'
       digest: '...'
-  public_keys:
-  - owner: 'Bob'
-    keys:
-    - '...'
-    revocation:
-    - '...'
-  - owner: 'Alice'
-    keys:
-    - '...'
-    revocation:
-    - '...'
 actions:
 - name: add_owner
+  description: 'Deny owner additions without sign off from current owners'
   runs-on: slsa-l4
   steps:
-  # TODO Figure out where reproducable-wasm source is, more policy to okay?
-  # - uses: actions/checkout@v4
 ```
 
 Expanded form of action `add_owner`
