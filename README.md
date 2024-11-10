@@ -4,6 +4,8 @@
 
 ## Philosophy
 
+> *source is truth, truth is source*
+
 - The approach we aim to take is to enable the current default most widely adopted methodology first: git + CI/CD
   - First centralized: GitHub + GitHub Actions
   - Next decentralized: Forgejo + Forgejo Workflows

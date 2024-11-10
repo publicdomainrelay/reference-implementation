@@ -18,6 +18,7 @@ Enable two way relay from decentralized to and from centralized.
 
 ## Requirements
 
+- [ ] Ensure everything is kept in tree, keyservers MUST NOT be required
 - [ ] POC use auto branch governance to relay changes from non-GitHub through entity GitHub account via fork and pull-request to entity account forks of org repos
   - This is a simple "roll up"
 
@@ -34,52 +35,107 @@ Enable two way relay from decentralized to and from centralized.
   - Eventually get to dynamic based on more policy
 - Figure out where `runs-on: reproducable-wasm` source is, more policy to okay?
   - For instance, running some `uses: actions/checkout@v4` via IPVM
+- Remove unneeded sections after initial generation
 
 ### Maintainers
 
 - Apply policy to branches in `applies_to`
 - Create branch per `mod_branch`
-- Run all `deny` actions
+- Leverage `actions` as guidance for how to modify policy
+- Changes to policy file require successful execution of all `mod_requires`
+
+### Generation of Maintainers Upstream Policy
+
+Shorthand
 
 ```bash
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "INIT_DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
 ```
 
+Long form
+
 ```bash
+export BRANCH_NAME="main"
+export POLICY_YAML_PATH=".tools/open-architecture/governance/branches/${BRANCH_NAME}/policies/upstream.yml"
 export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
 export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
-export POLICY_YAML_PATH="${LOCAL_OPERATION_CACHE_DIR}/policy.yaml"
-export DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
+export INIT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
 export NEXT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.owners.json"
 mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
-echo '[{}]' > "${DATA_OWNERS_JSON_PATH}"
-jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
-jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
-jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${DATA_OWNERS_JSON_PATH}" | jq
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "branch_name Maintainers" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.owners = load(strenv(DATA_OWNERS_JSON_PATH))' | tee "${POLICY_YAML_PATH}"
+echo '[{}]' > "${INIT_DATA_OWNERS_JSON_PATH}"
+jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${INIT_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${INIT_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${INIT_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${INIT_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${INIT_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${INIT_DATA_OWNERS_JSON_PATH}" | jq
+mkdir -pv ".tools/open-architecture/governance/branches/${BRANCH_NAME}/policies"
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "Maintainers of branch_name branch" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq --indent 2 --prettyPrint '.data.owners = load(strenv(INIT_DATA_OWNERS_JSON_PATH))' | tee "${POLICY_YAML_PATH}"
 ```
 
+### Verification of Modifications
+
+Ensure all existing owners sign off on all changes to policy
+
+```bash
+export BRANCH_NAME="main"
+export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
+export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
+cat .tools/open-architecture/governance/branches/${BRANCH_NAME}/policies/upstream.yml | yq '.data.owners[] | .keys[]' | gpg --import --homedir "${LOCAL_OPERATION_CACHE_DIR}"
+# TODO Get patches (attacker controlled, attacker / potential contributor receives sign-offs via their federation pulling in new sign-off commits on their proposed branch from maintainers, this can be done via keys within hosted VCS or on device)
+# cat patches | git am
+# TODO Verify commits against owner keys in upstream
+```
+
+### Addition of Maintainer
+
+Shorthand
+
+```bash
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "ADD_DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+```
+
+Long form
+
+```bash
+export BRANCH_NAME="main"
+export POLICY_YAML_PATH=".tools/open-architecture/governance/branches/${BRANCH_NAME}/upstream.yml"
+export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
+export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
+export ADD_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
+export NEXT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.owners.json"
+mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
+echo '[{}]' > "${ADD_DATA_OWNERS_JSON_PATH}"
+jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "Maintainers of branch_name branch" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq -i --indent 2 --prettyPrint '.data.owners |= . + load(strenv(ADD_DATA_OWNERS_JSON_PATH))' "${POLICY_YAML_PATH}"
+# TODO nonce, cnonce? branches, maintainer commits
+```
+
+### Template
+
 ```yaml
-name: 'branch_name Maintainers'
-deny:
-  action: 'add_owner'
+name: 'Maintainers of branch_name branch'
 applies_to:
 - 'branch_name'
 mod_branch:
 - '_mod_policy_'
+mod_requires:
+- 'verify_mod_owner'
 data:
   pending_changes:
   - nonce: '... UUID for pending change ...'
     action: add_owner
     signers:
     - cnonce: '... UUID ...'
-      owner: 'Bob'
     inputs:
-      key_public: '...'
-      owner: 'Eve'
+      actor: 'Eve'
+      email: ''
+      public_key: '...'
   owners:
   - actors:
     - '@bob@scitt.bob.chadig.com'
