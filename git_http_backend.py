@@ -6,6 +6,55 @@ from aiohttp import web
 from pathlib import Path
 from io import BytesIO
 import zipfile
+import configparser
+
+from atproto import Client, models
+import keyring
+
+# TODO DEBUG REMOVE
+os.environ["HOME"] = str(Path(__file__).parent.resolve())
+
+config = configparser.ConfigParser()
+config.read(str(Path("~", ".gitconfig").expanduser()))
+
+atproto_handle = config["user"]["atproto"]
+atproto_handle_username = atproto_handle.split(".")[0]
+atproto_base_url = "https://" + ".".join(atproto_handle.split(".")[1:])
+atproto_email = config["user"]["email"]
+atproto_password = keyring.get_password(
+    atproto_email,
+    ".".join(["password", atproto_handle]),
+)
+
+client = Client(
+    base_url=atproto_base_url,
+)
+client.login(
+    atproto_handle,
+    atproto_password,
+)
+
+profile = client.get_profile(atproto_handle)
+
+import snoop
+
+snoop.pp(profile)
+
+post = client.send_post('index')
+
+snoop.pp(post)
+
+sys.exit(0)
+
+parent = models.create_strong_ref(profile.pinned_post)
+
+parent = models.create_strong_ref(profile.pinned_post)
+root = models.create_strong_ref(profile.pinned_post)
+
+client.send_post(
+    text='lol!',
+    reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
+)
 
 # Configuration
 GIT_PROJECT_ROOT = "/srv/git"
