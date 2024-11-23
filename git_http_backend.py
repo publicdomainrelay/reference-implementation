@@ -1,8 +1,11 @@
 import os
 import sys
 import asyncio
+import base64
 from aiohttp import web
 from pathlib import Path
+from io import BytesIO
+import zipfile
 
 # Configuration
 GIT_PROJECT_ROOT = "/srv/git"
@@ -16,8 +19,45 @@ def list_git_internal_files(repo_path):
     files = []
     git_dir = Path(repo_path)
     for file in git_dir.rglob("*"):
-        files.append(str(file))
-    return files
+        if file.is_file():
+            yield file
+
+# Create a zip archive containing the internal files
+def create_zip_of_files(files):
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for file in files:
+            arcname = str(file.relative_to(file.anchor))
+            zipf.write(file, arcname=arcname)
+    zip_buffer.seek(0)
+    return zip_buffer.read()
+
+# Create a PNG image that also contains the zip archive
+def create_png_with_zip(zip_data):
+    # Create a minimal PNG header
+    png_header = (
+        b'\x89PNG\r\n\x1a\n'  # PNG signature
+        b'\x00\x00\x00\r'     # IHDR chunk length
+        b'IHDR'               # IHDR chunk type
+        b'\x00\x00\x00\x01'   # Width: 1
+        b'\x00\x00\x00\x01'   # Height: 1
+        b'\x08'               # Bit depth: 8
+        b'\x02'               # Color type: Truecolor
+        b'\x00'               # Compression method
+        b'\x00'               # Filter method
+        b'\x00'               # Interlace method
+        b'\x90wS\xde'         # CRC
+        b'\x00\x00\x00\x0a'   # IDAT chunk length
+        b'IDAT'               # IDAT chunk type
+        b'\x78\x9c\x63\x60\x00\x00\x00\x02\x00\x01'  # Compressed data
+        b'\x02\x7e\xe5\x45'   # CRC
+        b'\x00\x00\x00\x00'   # IEND chunk length
+        b'IEND'               # IEND chunk type
+        b'\xaeB`\x82'         # CRC
+    )
+    # Combine the PNG header and the zip data
+    png_zip_data = png_header + zip_data
+    return png_zip_data
 
 # Handle Git HTTP Backend requests
 async def handle_git_backend_request(request):
@@ -113,10 +153,21 @@ async def handle_git_backend_request(request):
     if path_info.endswith("git-receive-pack"):
         repo_name = Path(path_info).parent.name
         repo_path = os.path.join(GIT_PROJECT_ROOT, repo_name)
-        internal_files = list_git_internal_files(repo_path)
-        print(f"Updated internal files in {repo_name}:")
-        for file in internal_files:
-            print(file)
+        for internal_file in list_git_internal_files(repo_path):
+            print(f"Updated internal file in {repo_name}: {internal_file}")
+
+            # Create zip archive of internal files
+            zip_data = create_zip_of_files([internal_file])
+
+            # Create PNG with embedded zip
+            png_zip_data = create_png_with_zip(zip_data)
+
+            # Base64 encode the PNG data
+            encoded_data = base64.b64encode(png_zip_data).decode('utf-8')
+
+            # Output the data URL
+            data_url = f"data:image/png;base64,{encoded_data}"
+            print(data_url)
 
     return response
 
@@ -130,9 +181,7 @@ if __name__ == "__main__":
     if not os.path.exists(test_repo_path):
         os.makedirs(GIT_PROJECT_ROOT, exist_ok=True)
         os.system(f"git init --bare {test_repo_path}")
-        os.system(f"rm -rf {test_repo_path}/hooks")
         print(f"Initialized bare repository at {test_repo_path}")
 
     # Start the server
     web.run_app(app, host="0.0.0.0", port=8080)
-
