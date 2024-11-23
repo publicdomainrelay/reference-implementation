@@ -40,21 +40,41 @@ import snoop
 
 snoop.pp(profile)
 
-post = client.send_post('index')
-
-snoop.pp(post)
-
-sys.exit(0)
-
-parent = models.create_strong_ref(profile.pinned_post)
+# TODO Learn how to pin post
+# TODO Create index post if not exists
+# post = client.send_post('index')
+# snoop.pp(post)
+profile.pinned_post = models.base.RecordModelBase(
+    uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
+    cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
+)
 
 parent = models.create_strong_ref(profile.pinned_post)
 root = models.create_strong_ref(profile.pinned_post)
 
-client.send_post(
-    text='lol!',
+for index_type, index_entry in client.get_post_thread(
+    profile.pinned_post.uri,
+    depth=10,
+):
+    if index_type == 'thread':
+        if index_entry.post.author.did == profile.did:
+            snoop.pp(index_entry.post)
+    else:
+        snoop.pp(index_entry)
+
+sys.exit(0)
+
+index_vcs = client.send_post(
+    text='vcs',
     reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
 )
+index_vcs = models.base.RecordModelBase(
+    uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnoiwdgxs2l',
+    cid='bafyreihu7azon57jmoixzzrkfysrk5yqbdhqgddzt5twqnl54ilw4bu3ja',
+)
+snoop.pp(index_vcs)
+
+sys.exit(0)
 
 # Configuration
 GIT_PROJECT_ROOT = "/srv/git"
