@@ -4,6 +4,7 @@ import json
 import atexit
 import asyncio
 import base64
+import pprint
 import warnings
 from aiohttp import web
 from pathlib import Path
@@ -12,17 +13,24 @@ from typing import Optional
 import zipfile
 import hashlib
 import configparser
+import argparse
 
 from pydantic import BaseModel, Field
 from atproto import Client, models
 import keyring
-# import snoop
+import snoop
 
 # TODO Make hash_alg configurable
 hash_alg = 'sha384'
 
 # TODO DEBUG REMOVE
 os.environ["HOME"] = str(Path(__file__).parent.resolve())
+
+parser = argparse.ArgumentParser(prog='atproto-git', usage='%(prog)s [options]')
+parser.add_argument('--repos-directory', dest="repos_directory", help='directory for local copies of git repos')
+args = parser.parse_args()
+if not args.repos_directory or not Path(args.repos_directory).exists():
+    raise ValueError(f"--repos-directory does not exist {args.repos_directory!r}")
 
 config = configparser.ConfigParser()
 config.read(str(Path("~", ".gitconfig").expanduser()))
@@ -74,8 +82,11 @@ if atproto_index.root is None:
     # post = client.send_post('index')
     # snoop.pp(post)
     atproto_index.root = models.base.RecordModelBase(
-        uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
-        cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
+        # uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
+        # cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
+        uri="at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnvyk3dgk2l",
+        cid="bafyreigs4ihxc55x7qyw2epffa6duphyh2kmcbwe634jmg3ccy3brcw7ma",
+
     )
 
 def atproto_index_read(client, index, depth: int = None):
@@ -85,6 +96,7 @@ def atproto_index_read(client, index, depth: int = None):
     ):
         if index_type == 'thread':
             if index_entry.post.author.did == index.owner_profile.did:
+                pprint.pprint(json.loads(index_entry.model_dump_json()))
                 for reply in index_entry.replies:
                     if reply.post.author.did == index.owner_profile.did:
                         sub_index = index.__class__(
@@ -94,12 +106,21 @@ def atproto_index_read(client, index, depth: int = None):
                                 cid=reply.post.cid,
                             )
                         )
-                        atproto_index_read(client, sub_index)
-                        index.entries[reply.post.record.text] = sub_index
+                        atproto_index_read(client, sub_index, depth=depth)
+                        if reply.post.record.text in index.entries:
+                            index.entries[reply.post.record.text].entries.update(
+                                sub_index.entries,
+                            )
+                        else:
+                            index.entries[reply.post.record.text] = sub_index
         elif index_type == 'threadgate':
             pass
         else:
             warnings.warn(f"Unkown get_post_thread().index_type: {index_type!r}: {pprint.pformat(index_entry)}")
+
+atproto_index_read(client, atproto_index)
+
+sys.exit(0)
 
 def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, data_as_image_hash: str = None):
     if index_entry_key in index.entries:
@@ -126,18 +147,22 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
         )
     )
 
-if not atproto_index.entries:
-    atproto_index_read(client, atproto_index)
-
+atproto_index_read(client, atproto_index)
 atproto_index_create(atproto_index, "vcs")
 atproto_index_create(atproto_index.entries["vcs"], "git")
+atproto_index_read(client, atproto_index.entries["vcs"].entries["git"])
 
 # Configuration
-GIT_PROJECT_ROOT = "/srv/git"
+GIT_PROJECT_ROOT = args.repos_directory
 GIT_HTTP_EXPORT_ALL = "1"
 
 # Ensure the project root exists
 os.makedirs(GIT_PROJECT_ROOT, exist_ok=True)
+
+for repo_name in atproto_index.entries["vcs"].entries["git"].entries:
+    snoop.pp(repo_name)
+
+sys.exit(0)
 
 # Utility to list all internal files in a Git repository
 def list_git_internal_files(repo_path):
@@ -308,7 +333,7 @@ async def handle_git_backend_request(request):
                 atproto_index.entries["vcs"].entries["git"].entries[repo_name],
                 repo_file_path,
                 data_as_image=png_zip_data,
-                data_as_image_hash=f"{hash_alg}:{hash_instance}",
+                data_as_image_hash=f"{hash_alg}:{data_as_image_hash}",
             )
 
     return response
