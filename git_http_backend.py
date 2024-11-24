@@ -49,7 +49,9 @@ atproto_password = keyring.get_password(
 
 class CacheATProtoIndex(BaseModel):
     owner_profile: Optional[models.app.bsky.actor.defs.ProfileViewDetailed] = None
+    post: Optional[models.base.RecordModelBase] = None
     root: Optional[models.base.RecordModelBase] = None
+    parent: Optional[models.base.RecordModelBase] = None
     entries: dict[str, 'CacheATProtoIndex'] = Field(
         default_factory=lambda: {},
     )
@@ -88,8 +90,8 @@ def update_profile(client, pinned_post):
             "ATPROTO_BASE_URL": atproto_base_url,
             "ATPROTO_HANDLE": atproto_handle,
             "ATPROTO_PASSWORD": atproto_password,
-            "ATPROTO_PINNED_POST_URI": atproto_index.root.uri,
-            "ATPROTO_PINNED_POST_CID": atproto_index.root.cid,
+            "ATPROTO_PINNED_POST_URI": pinned_post.uri,
+            "ATPROTO_PINNED_POST_CID": pinned_post.cid,
         },
     }
     cmd = [
@@ -106,37 +108,50 @@ def update_profile(client, pinned_post):
     proc_result.check_returncode()
 
 if atproto_index.root is None:
-    atproto_index.root = client.send_post(text="index")
-    update_profile(
-        client,
-        pinned_post=atproto_index.root,
-    )
+    post = client.send_post(text="index")
+    update_profile(client, pinned_post=post)
+    atproto_index.root = post
+
+# For top level index all props are the same
+atproto_index.post = atproto_index.root
+atproto_index.parent = atproto_index.root
 
 def atproto_index_read(client, index, depth: int = 100):
     for index_type, index_entry in client.get_post_thread(
-        index.root.uri,
+        index.post.uri,
         depth=depth,
     ):
         snoop.pp(index_type, index_entry)
         if index_type == 'thread':
             if index_entry.post.author.did == index.owner_profile.did:
                 # pprint.pprint(json.loads(index_entry.model_dump_json()))
-                for reply in index_entry.replies:
-                    if reply.post.author.did == index.owner_profile.did:
+                if not index_entry.replies:
+                    continue
+                for reply_entry in index_entry.replies:
+                    if reply_entry.post.author.did == index.owner_profile.did:
+                        pprint.pprint(json.loads(reply_entry.model_dump_json()))
                         sub_index = index.__class__(
                             owner_profile=index.owner_profile,
-                            root=models.base.RecordModelBase(
-                                uri=reply.post.uri,
-                                cid=reply.post.cid,
-                            )
+                            post={
+                                "uri": reply_entry.post.uri,
+                                "cid": reply_entry.post.cid,
+                            },
+                            root={
+                                "uri": reply_entry.post.record.reply.root.uri,
+                                "cid": reply_entry.post.record.reply.root.cid,
+                            },
+                            parent={
+                                "uri": reply_entry.post.record.reply.parent.uri,
+                                "cid": reply_entry.post.record.reply.parent.cid,
+                            },
                         )
                         atproto_index_read(client, sub_index, depth=depth)
-                        if reply.post.record.text in index.entries:
-                            index.entries[reply.post.record.text].entries.update(
+                        if reply_entry.post.record.text in index.entries:
+                            index.entries[reply_entry.post.record.text].entries.update(
                                 sub_index.entries,
                             )
                         else:
-                            index.entries[reply.post.record.text] = sub_index
+                            index.entries[reply_entry.post.record.text] = sub_index
         elif index_type == 'threadgate':
             pass
         else:
@@ -145,7 +160,7 @@ def atproto_index_read(client, index, depth: int = 100):
 def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, data_as_image_hash: str = None):
     if index_entry_key in index.entries:
         return
-    parent = models.create_strong_ref(index.root)
+    parent = models.create_strong_ref(index.post)
     root = models.create_strong_ref(index.root)
     method = client.send_post
     kwargs = {}
@@ -161,10 +176,18 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
     )
     index.entries[index_entry_key] = index.__class__(
         owner_profile=index.owner_profile,
-        root=models.base.RecordModelBase(
-            uri=post.uri,
-            cid=post.cid,
-        )
+        post={
+            "uri": post.uri,
+            "cid": post.cid,
+        },
+        root={
+            "uri": root.uri,
+            "cid": root.cid,
+        },
+        parent={
+            "uri": parent.uri,
+            "cid": parent.cid,
+        },
     )
 
 atproto_index_read(client, atproto_index)
