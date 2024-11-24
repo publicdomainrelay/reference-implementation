@@ -15,7 +15,7 @@ import configparser
 from pydantic import BaseModel, Field
 from atproto import Client, models
 import keyring
-import snoop
+# import snoop
 
 # TODO DEBUG REMOVE
 os.environ["HOME"] = str(Path(__file__).parent.resolve())
@@ -83,7 +83,6 @@ def atproto_index_read(client, index, depth: int = None):
             if index_entry.post.author.did == index.owner_profile.did:
                 for reply in index_entry.replies:
                     if reply.post.author.did == index.owner_profile.did:
-                        snoop.pp(reply.post)
                         sub_index = index.__class__(
                             owner_profile=index.owner_profile,
                             root=models.base.RecordModelBase(
@@ -96,7 +95,7 @@ def atproto_index_read(client, index, depth: int = None):
         elif index_type == 'threadgate':
             pass
         else:
-            snoop.pp(index_entry)
+            warnings.warn(f"Unkown get_post_thread().index_type: {index_type!r}: {pprint.pformat(index_entry)}")
 
 def atproto_index_create(index, index_entry_key):
     if index_entry_key in index.entries:
@@ -121,10 +120,6 @@ if not atproto_index.entries:
 
 atproto_index_create(atproto_index, "vcs")
 atproto_index_create(atproto_index.entries["vcs"], "git")
-
-snoop.pp(atproto_index)
-
-sys.exit(0)
 
 # Configuration
 GIT_PROJECT_ROOT = "/srv/git"
