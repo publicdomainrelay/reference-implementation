@@ -10,12 +10,16 @@ from pathlib import Path
 from io import BytesIO
 from typing import Optional
 import zipfile
+import hashlib
 import configparser
 
 from pydantic import BaseModel, Field
 from atproto import Client, models
 import keyring
 # import snoop
+
+# TODO Make hash_alg configurable
+hash_alg = 'sha384'
 
 # TODO DEBUG REMOVE
 os.environ["HOME"] = str(Path(__file__).parent.resolve())
@@ -97,14 +101,22 @@ def atproto_index_read(client, index, depth: int = None):
         else:
             warnings.warn(f"Unkown get_post_thread().index_type: {index_type!r}: {pprint.pformat(index_entry)}")
 
-def atproto_index_create(index, index_entry_key, ):
+def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, data_as_image_hash: str = None):
     if index_entry_key in index.entries:
         return
     parent = models.create_strong_ref(index.root)
     root = models.create_strong_ref(index.root)
-    post = client.send_post(
+    method = client.send_post
+    kwargs = {}
+    if data_as_image is not None:
+        method = client.send_image
+        kwargs["image"] = data_as_image
+        if data_as_image_hash is not None:
+            kwargs["image_alt"] = data_as_image_hash
+    post = method(
         text=index_entry_key,
-        reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
+        reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root),
+        **kwargs,
     )
     index.entries[index_entry_key] = index.__class__(
         owner_profile=index.owner_profile,
@@ -174,6 +186,8 @@ def create_png_with_zip(zip_data):
 
 # Handle Git HTTP Backend requests
 async def handle_git_backend_request(request):
+    global hash_alg
+
     path_info = request.match_info.get("path", "")
     env = {
         "GIT_PROJECT_ROOT": GIT_PROJECT_ROOT,
@@ -263,15 +277,16 @@ async def handle_git_backend_request(request):
     await proc.wait()
 
     # Handle push events (git-receive-pack)
+    print(f"path_info: {path_info}")
     if path_info.endswith("git-receive-pack"):
         repo_name = Path(path_info).parent.name
-        repo_name
-        atproto_index_create(atproto_index.entries["vcs"].entries["git"], repo_name)
-        repo_path = os.path.join(GIT_PROJECT_ROOT, repo_name)
+        repo_path = Path(GIT_PROJECT_ROOT, repo_name)
         if repo_name.endswith(".git"):
             repo_name = repo_name[:-4]
+        atproto_index_create(atproto_index.entries["vcs"].entries["git"], repo_name)
         for internal_file in list_git_internal_files(repo_path):
-            print(f"Updated internal file in {repo_name}: {internal_file}")
+            repo_file_path = str(internal_file.relative_to(repo_path))
+            print(f"Updated internal file in {repo_name}: {repo_file_path}")
 
             # Create zip archive of internal files
             zip_data = create_zip_of_files([internal_file])
@@ -286,6 +301,15 @@ async def handle_git_backend_request(request):
             # data_url = f"data:image/png;base64,{encoded_data}"
             # print(data_url)
             # atproto_index_create(atproto_index.entries["vcs"]["git"], data_url)
+            hash_instance = hashlib.new(hash_alg)
+            hash_instance.update(internal_file.read_bytes())
+            data_as_image_hash = hash_instance.hexdigest()
+            atproto_index_create(
+                atproto_index.entries["vcs"].entries["git"].entries[repo_name],
+                repo_file_path,
+                data_as_image=png_zip_data,
+                data_as_image_hash=f"{hash_alg}:{hash_instance}",
+            )
 
     return response
 
@@ -299,6 +323,7 @@ if __name__ == "__main__":
     if not os.path.exists(test_repo_path):
         os.makedirs(GIT_PROJECT_ROOT, exist_ok=True)
         os.system(f"git init --bare {test_repo_path}")
+        os.system(f"rm -rf {test_repo_path}/hooks/")
         print(f"Initialized bare repository at {test_repo_path}")
 
     # Start the server
