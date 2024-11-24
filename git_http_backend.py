@@ -1,15 +1,21 @@
 import os
 import sys
+import json
+import atexit
 import asyncio
 import base64
+import warnings
 from aiohttp import web
 from pathlib import Path
 from io import BytesIO
+from typing import Optional
 import zipfile
 import configparser
 
+from pydantic import BaseModel, Field
 from atproto import Client, models
 import keyring
+import snoop
 
 # TODO DEBUG REMOVE
 os.environ["HOME"] = str(Path(__file__).parent.resolve())
@@ -26,6 +32,24 @@ atproto_password = keyring.get_password(
     ".".join(["password", atproto_handle]),
 )
 
+class CacheATProtoIndex(BaseModel):
+    owner_profile: Optional[models.app.bsky.actor.defs.ProfileViewDetailed] = None
+    root: Optional[models.base.RecordModelBase] = None
+    entries: dict[str, 'CacheATProtoIndex'] = Field(
+        default_factory=lambda: {},
+    )
+
+atproto_index = CacheATProtoIndex()
+atproto_index_path = Path("~", ".cache", "atproto_vcs_git_cache.json").expanduser()
+atproto_index_path.parent.mkdir(parents=True, exist_ok=True)
+atexit.register(
+    lambda: atproto_index_path.write_text(
+        atproto_index.model_dump_json(),
+    )
+)
+if atproto_index_path.exists():
+    atproto_index = CacheATProtoIndex.model_validate_json(atproto_index_path.read_text())
+
 client = Client(
     base_url=atproto_base_url,
 )
@@ -34,45 +58,71 @@ client.login(
     atproto_password,
 )
 
-profile = client.get_profile(atproto_handle)
+if atproto_index.owner_profile is None:
+    atproto_index.owner_profile = client.get_profile(atproto_handle)
+atproto_index.root = atproto_index.owner_profile.pinned_post
 
-import snoop
+if atproto_index.root is None:
+    # TODO Learn how to pin post
+    warnings.warn("TODO Learn how to pin post")
+    # TODO Create index post if not exists
+    warnings.warn("TODO Create index post if not exists")
+    # post = client.send_post('index')
+    # snoop.pp(post)
+    atproto_index.root = models.base.RecordModelBase(
+        uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
+        cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
+    )
 
-snoop.pp(profile)
+def atproto_index_read(client, index, depth: int = None):
+    for index_type, index_entry in client.get_post_thread(
+        index.root.uri,
+        depth=depth,
+    ):
+        if index_type == 'thread':
+            if index_entry.post.author.did == index.owner_profile.did:
+                for reply in index_entry.replies:
+                    if reply.post.author.did == index.owner_profile.did:
+                        snoop.pp(reply.post)
+                        sub_index = index.__class__(
+                            owner_profile=index.owner_profile,
+                            root=models.base.RecordModelBase(
+                                uri=reply.post.uri,
+                                cid=reply.post.cid,
+                            )
+                        )
+                        atproto_index_read(client, sub_index)
+                        index.entries[reply.post.record.text] = sub_index
+        elif index_type == 'threadgate':
+            pass
+        else:
+            snoop.pp(index_entry)
 
-# TODO Learn how to pin post
-# TODO Create index post if not exists
-# post = client.send_post('index')
-# snoop.pp(post)
-profile.pinned_post = models.base.RecordModelBase(
-    uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
-    cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
-)
+def atproto_index_create(index, index_entry_key):
+    if index_entry_key in index.entries:
+        # return
+        pass
+    parent = models.create_strong_ref(index.root)
+    root = models.create_strong_ref(index.root)
+    post = client.send_post(
+        text=index_entry_key,
+        reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
+    )
+    index.entries[index_entry_key] = index.__class__(
+        owner_profile=index.owner_profile,
+        root=models.base.RecordModelBase(
+            uri=post.uri,
+            cid=post.cid,
+        )
+    )
 
-parent = models.create_strong_ref(profile.pinned_post)
-root = models.create_strong_ref(profile.pinned_post)
+if not atproto_index.entries:
+    atproto_index_read(client, atproto_index)
 
-for index_type, index_entry in client.get_post_thread(
-    profile.pinned_post.uri,
-    depth=10,
-):
-    if index_type == 'thread':
-        if index_entry.post.author.did == profile.did:
-            snoop.pp(index_entry.post)
-    else:
-        snoop.pp(index_entry)
+atproto_index_create(atproto_index, "vcs")
+atproto_index_create(atproto_index.entries["vcs"], "git")
 
-sys.exit(0)
-
-index_vcs = client.send_post(
-    text='vcs',
-    reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
-)
-index_vcs = models.base.RecordModelBase(
-    uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnoiwdgxs2l',
-    cid='bafyreihu7azon57jmoixzzrkfysrk5yqbdhqgddzt5twqnl54ilw4bu3ja',
-)
-snoop.pp(index_vcs)
+snoop.pp(atproto_index)
 
 sys.exit(0)
 
