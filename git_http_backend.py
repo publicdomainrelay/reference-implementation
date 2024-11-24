@@ -142,10 +142,6 @@ def atproto_index_read(client, index, depth: int = 100):
         else:
             warnings.warn(f"Unkown get_post_thread().index_type: {index_type!r}: {pprint.pformat(index_entry)}")
 
-atproto_index_read(client, atproto_index)
-
-sys.exit(0)
-
 def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, data_as_image_hash: str = None):
     if index_entry_key in index.entries:
         return
@@ -183,10 +179,12 @@ GIT_HTTP_EXPORT_ALL = "1"
 # Ensure the project root exists
 os.makedirs(GIT_PROJECT_ROOT, exist_ok=True)
 
-for repo_name in atproto_index.entries["vcs"].entries["git"].entries:
-    snoop.pp(repo_name)
+@snoop
+def snoop_repos():
+    for repo_name in atproto_index.entries["vcs"].entries["git"].entries:
+        snoop.pp(repo_name)
 
-sys.exit(0)
+snoop_repos()
 
 # Utility to list all internal files in a Git repository
 def list_git_internal_files(repo_path):
