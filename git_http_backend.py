@@ -97,10 +97,9 @@ def atproto_index_read(client, index, depth: int = None):
         else:
             warnings.warn(f"Unkown get_post_thread().index_type: {index_type!r}: {pprint.pformat(index_entry)}")
 
-def atproto_index_create(index, index_entry_key):
+def atproto_index_create(index, index_entry_key, ):
     if index_entry_key in index.entries:
-        # return
-        pass
+        return
     parent = models.create_strong_ref(index.root)
     root = models.create_strong_ref(index.root)
     post = client.send_post(
@@ -266,7 +265,11 @@ async def handle_git_backend_request(request):
     # Handle push events (git-receive-pack)
     if path_info.endswith("git-receive-pack"):
         repo_name = Path(path_info).parent.name
+        repo_name
+        atproto_index_create(atproto_index.entries["vcs"].entries["git"], repo_name)
         repo_path = os.path.join(GIT_PROJECT_ROOT, repo_name)
+        if repo_name.endswith(".git"):
+            repo_name = repo_name[:-4]
         for internal_file in list_git_internal_files(repo_path):
             print(f"Updated internal file in {repo_name}: {internal_file}")
 
@@ -277,11 +280,12 @@ async def handle_git_backend_request(request):
             png_zip_data = create_png_with_zip(zip_data)
 
             # Base64 encode the PNG data
-            encoded_data = base64.b64encode(png_zip_data).decode('utf-8')
+            # encoded_data = base64.b64encode(png_zip_data).decode('utf-8')
 
             # Output the data URL
-            data_url = f"data:image/png;base64,{encoded_data}"
-            print(data_url)
+            # data_url = f"data:image/png;base64,{encoded_data}"
+            # print(data_url)
+            # atproto_index_create(atproto_index.entries["vcs"]["git"], data_url)
 
     return response
 
