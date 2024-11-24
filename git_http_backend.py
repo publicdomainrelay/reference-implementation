@@ -13,12 +13,17 @@ from typing import Optional
 import zipfile
 import hashlib
 import configparser
+import subprocess
 import argparse
 
 from pydantic import BaseModel, Field
 from atproto import Client, models
 import keyring
 import snoop
+
+# Helper scripts for APIs not available to Python client, etc.
+# TODO importlib.resources once packaged
+ATPROTO_UPDATE_PROFILE_JS_PATH = Path(__file__).parent.resolve().joinpath("update_profile.js")
 
 # TODO Make hash_alg configurable
 hash_alg = 'sha384'
@@ -29,8 +34,6 @@ os.environ["HOME"] = str(Path(__file__).parent.resolve())
 parser = argparse.ArgumentParser(prog='atproto-git', usage='%(prog)s [options]')
 parser.add_argument('--repos-directory', dest="repos_directory", help='directory for local copies of git repos')
 args = parser.parse_args()
-if not args.repos_directory or not Path(args.repos_directory).exists():
-    raise ValueError(f"--repos-directory does not exist {args.repos_directory!r}")
 
 config = configparser.ConfigParser()
 config.read(str(Path("~", ".gitconfig").expanduser()))
@@ -74,18 +77,39 @@ if atproto_index.owner_profile is None:
     atproto_index.owner_profile = client.get_profile(atproto_handle)
 atproto_index.root = atproto_index.owner_profile.pinned_post
 
+def update_profile(client, pinned_post):
+    # TODO Use Python client APIs once available
+    global atproto_base_url
+    global atproto_handle
+    global atproto_password
+    env = {
+        **os.environ,
+        **{
+            "ATPROTO_BASE_URL": atproto_base_url,
+            "ATPROTO_HANDLE": atproto_handle,
+            "ATPROTO_PASSWORD": atproto_password,
+            "ATPROTO_PINNED_POST_URI": atproto_index.root.uri,
+            "ATPROTO_PINNED_POST_CID": atproto_index.root.cid,
+        },
+    }
+    cmd = [
+        "deno",
+        "--allow-env",
+        "--allow-net",
+        str(ATPROTO_UPDATE_PROFILE_JS_PATH.name),
+    ]
+    proc_result = subprocess.run(
+        cmd,
+        cwd=str(ATPROTO_UPDATE_PROFILE_JS_PATH.parent.resolve()),
+        env=env,
+    )
+    proc_result.check_returncode()
+
 if atproto_index.root is None:
-    # TODO Learn how to pin post
-    warnings.warn("TODO Learn how to pin post")
-    # TODO Create index post if not exists
-    warnings.warn("TODO Create index post if not exists")
-    # post = client.send_post('index')
-    # snoop.pp(post)
-    atproto_index.root = models.base.RecordModelBase(
-        # uri='at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnnsi6vzc2l',
-        # cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
-        uri="at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnvyk3dgk2l",
-        cid="bafyreigs4ihxc55x7qyw2epffa6duphyh2kmcbwe634jmg3ccy3brcw7ma",
+    atproto_index.root = client.send_post(text="index")
+    update_profile(
+        client,
+        pinned_post=atproto_index.root,
     )
 
 def atproto_index_read(client, index, depth: int = 100):
@@ -94,15 +118,9 @@ def atproto_index_read(client, index, depth: int = 100):
         depth=depth,
     ):
         snoop.pp(index_type, index_entry)
-        for index_type, index_entry in client.get_post_thread(
-            index_entry.post.uri,
-            depth=depth,
-        ):
-            snoop.pp(index_type, index_entry)
-        return
         if index_type == 'thread':
             if index_entry.post.author.did == index.owner_profile.did:
-                pprint.pprint(json.loads(index_entry.model_dump_json()))
+                # pprint.pprint(json.loads(index_entry.model_dump_json()))
                 for reply in index_entry.replies:
                     if reply.post.author.did == index.owner_profile.did:
                         sub_index = index.__class__(
