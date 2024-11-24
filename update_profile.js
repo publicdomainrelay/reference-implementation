@@ -1,7 +1,7 @@
-import { BskyAgent } from '@atproto/api';
+import { BskyAgent } from '@atproto/api'
 
 const agent = new BskyAgent({
-  service: Deno.env.get("ATPROTO_BASE_URL")
+  service: Deno.env.get("ATPROTO_BASE_URL"),
 })
 await agent.login({
   identifier: Deno.env.get("ATPROTO_HANDLE"),
@@ -11,8 +11,10 @@ await agent.login({
 await agent.upsertProfile(existingProfile => {
   const existing = existingProfile ?? {}
 
-  // existing.pinnedPost = Deno.env.get("ATPROTO_PASSWORD")
-  existing.description = `${process.env["ATPROTO_HANDLE"]}`;
+  existing.pinnedPost = {
+    "uri": Deno.env.get("ATPROTO_PINNED_POST_URI"),
+    "cid": Deno.env.get("ATPROTO_PINNED_POST_CID"),
+  }
 
   return existing
 })

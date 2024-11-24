@@ -86,14 +86,20 @@ if atproto_index.root is None:
         # cid='bafyreifu2tccoiq3ylpc3qhnbwdgxfnxwcnphgyptxkbxkovi7d5c7hwo4',
         uri="at://did:plc:vjnm5ukoaxy4fi4clcqhagud/app.bsky.feed.post/3lbnvyk3dgk2l",
         cid="bafyreigs4ihxc55x7qyw2epffa6duphyh2kmcbwe634jmg3ccy3brcw7ma",
-
     )
 
-def atproto_index_read(client, index, depth: int = None):
+def atproto_index_read(client, index, depth: int = 100):
     for index_type, index_entry in client.get_post_thread(
         index.root.uri,
         depth=depth,
     ):
+        snoop.pp(index_type, index_entry)
+        for index_type, index_entry in client.get_post_thread(
+            index_entry.post.uri,
+            depth=depth,
+        ):
+            snoop.pp(index_type, index_entry)
+        return
         if index_type == 'thread':
             if index_entry.post.author.did == index.owner_profile.did:
                 pprint.pprint(json.loads(index_entry.model_dump_json()))
