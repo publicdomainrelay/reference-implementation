@@ -69,4 +69,20 @@ for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
   fi
 done
 . "${HOME}/.bashrc"
+
+export DENO_VERSION=2.1.1
+export DENO_SETUP_DIR="cache/setup/deno/${DENO_VERSION}"
+export DENO_INSTALL_DIR="cache/install/deno/${DENO_VERSION}"
+curl --create-dirs --output-dir "${DENO_SETUP_DIR}" -fLOC - "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+curl --create-dirs --output-dir "${DENO_SETUP_DIR}" -fLOC - "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip.sha256sum"
+mkdir -pv "${DENO_INSTALL_DIR}"
+python -m zipfile --extract "${DENO_SETUP_DIR}/deno-x86_64-unknown-linux-gnu.zip" "${DENO_INSTALL_DIR}"
+chmod 755 "${DENO_INSTALL_DIR}/deno"
+LINE="export PATH=\"${PWD}/${DENO_INSTALL_DIR}:\${PATH}\""
+for FILE in "${HOME}/.bashrc" "${HOME}/.bash_profile"; do
+  if ! grep -qxF "$LINE" "$FILE"; then
+    echo "$LINE" >> "$FILE"
+  fi
+done
+. "${HOME}/.bashrc"
 ```
