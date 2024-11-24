@@ -25,8 +25,9 @@ import snoop
 # TODO importlib.resources once packaged
 ATPROTO_UPDATE_PROFILE_JS_PATH = Path(__file__).parent.resolve().joinpath("update_profile.js")
 
-# TODO Make hash_alg configurable
+# TODO Make hash_alg and allowd_hash_algs configurable
 hash_alg = 'sha384'
+allowed_hash_algs = ['sha256', hash_alg, 'sha512']
 
 # TODO DEBUG REMOVE
 os.environ["HOME"] = str(Path(__file__).parent.resolve())
@@ -47,16 +48,24 @@ atproto_password = keyring.get_password(
     ".".join(["password", atproto_handle]),
 )
 
+class CacheATProtoBlob(BaseModel):
+    hash_alg: str
+    hash_value: str
+    cid: str
+    did: str
+
 class CacheATProtoIndex(BaseModel):
+    text: str
     owner_profile: Optional[models.app.bsky.actor.defs.ProfileViewDetailed] = None
     post: Optional[models.base.RecordModelBase] = None
     root: Optional[models.base.RecordModelBase] = None
     parent: Optional[models.base.RecordModelBase] = None
+    blob: Optional[CacheATProtoBlob] = None
     entries: dict[str, 'CacheATProtoIndex'] = Field(
         default_factory=lambda: {},
     )
 
-atproto_index = CacheATProtoIndex()
+atproto_index = CacheATProtoIndex(text="index")
 atproto_index_path = Path("~", ".cache", "atproto_vcs_git_cache.json").expanduser()
 atproto_index_path.parent.mkdir(parents=True, exist_ok=True)
 atexit.register(
@@ -130,7 +139,19 @@ def atproto_index_read(client, index, depth: int = 100):
                 for reply_entry in index_entry.replies:
                     if reply_entry.post.author.did == index.owner_profile.did:
                         pprint.pprint(json.loads(reply_entry.model_dump_json()))
+                        index_kwargs = {}
+                        if (
+                            reply_entry.post.record.embed
+                            and reply_entry.post.record.embed.images
+                        ):
+                            index_kwargs["blob"] = {
+                                "hash_alg": reply_entry.post.record.embed.images[0].alt.split(":", maxsplit=1)[0],
+                                "hash_value": reply_entry.post.record.embed.images[0].alt.split(":", maxsplit=1)[1],
+                                "cid": reply_entry.post.record.embed.images[0].image.ref.link,
+                                "did": reply_entry.post.author.did,
+                            }
                         sub_index = index.__class__(
+                            text=reply_entry.post.record.text,
                             owner_profile=index.owner_profile,
                             post={
                                 "uri": reply_entry.post.uri,
@@ -144,6 +165,7 @@ def atproto_index_read(client, index, depth: int = 100):
                                 "uri": reply_entry.post.record.reply.parent.uri,
                                 "cid": reply_entry.post.record.reply.parent.cid,
                             },
+                            **index_kwargs,
                         )
                         atproto_index_read(client, sub_index, depth=depth)
                         if reply_entry.post.record.text in index.entries:
@@ -174,7 +196,19 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
         reply_to=models.AppBskyFeedPost.ReplyRef(parent=parent, root=root),
         **kwargs,
     )
+    index_kwargs = {}
+    if (
+        post.record.embed
+        and post.record.embed.images
+    ):
+        index_kwargs["blob"] = {
+            "hash_alg": post.record.embed.images[0].alt.split(":", maxsplit=1)[0],
+            "hash_value": post.record.embed.images[0].alt.split(":", maxsplit=1)[1],
+            "cid": post.record.embed.images[0].image.ref.link,
+            "did": post.author.did,
+        }
     index.entries[index_entry_key] = index.__class__(
+        text=index_entry_key,
         owner_profile=index.owner_profile,
         post={
             "uri": post.uri,
@@ -188,12 +222,13 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
             "uri": parent.uri,
             "cid": parent.cid,
         },
+        **index_kwargs,
     )
 
-atproto_index_read(client, atproto_index)
+# atproto_index_read(client, atproto_index)
 atproto_index_create(atproto_index, "vcs")
 atproto_index_create(atproto_index.entries["vcs"], "git")
-atproto_index_read(client, atproto_index.entries["vcs"].entries["git"])
+# atproto_index_read(client, atproto_index.entries["vcs"].entries["git"])
 
 # Configuration
 GIT_PROJECT_ROOT = args.repos_directory
@@ -216,6 +251,44 @@ def list_git_internal_files(repo_path):
     for file in git_dir.rglob("*"):
         if file.is_file():
             yield file
+
+# TODO Do this directly on the git repos instead of having a repos dir
+
+@snoop
+def download_from_atproto_to_local_repos_directory_git(client, repo_name, index):
+    # TODO Context for projects root
+    global GIT_PROJECT_ROOT
+    if not repo_name.endswith(".git"):
+        repo_name = f"{repo_name}.git"
+    repo_path = Path(GIT_PROJECT_ROOT, repo_name)
+    for index_entry_key, index_entry in index.entries.items():
+        if not index_entry.blob and not index_entry.blob.cid:
+            warnings.warn(f"{index.blob.hash_alg!r} is not a file, offending index node: {pprint.pprint(json.loads(index.model_dump_json()))}")
+        # TODO Probably should look at path traversal
+        internal_file = Path(GIT_PROJECT_ROOT, repo_name, index_entry.text)
+        repo_file_path = str(internal_file.relative_to(repo_path))
+        print(f"Ddownloading internal file to {repo_name}: {repo_file_path}")
+        if internal_file.exists():
+            if index_entry.blob.hash_alg not in allowed_hash_algs:
+                raise ValueError(f"{index_entry.blob.hash_alg!r} is not in allowed_hash_algs, offending index node: {pprint.pprint(json.loads(index_entry.model_dump_json()))}")
+            hash_instance = hashlib.new(index_entry.blob.hash_alg)
+            hash_instance.update(internal_file.read_bytes())
+            hash_digest_local = hash_instance.hexdigest()
+            if hash_digest_local != index_entry.blob.hash_value:
+                raise ValueError(f"{index_entry.text} {index_entry.blob.hash_alg} mismatch local: {hash_digest_local} != remote: {index_entry.blob.hash_value}")
+        blob = client.com.atproto.sync.get_blob(
+            models.com.atproto.sync.get_blob.Params(
+                cid=index_entry.blob.cid,
+                did=index_entry.blob.did,
+            ),
+        )
+        snoop.pp(blob)
+        # internal_file.write_bytes(blob)
+        # TODO
+        print(f"Successful download of internal file to {repo_name}: {repo_file_path}")
+
+for repo_name, repo_index in atproto_index.entries["vcs"].entries["git"].entries.items():
+    download_from_atproto_to_local_repos_directory_git(client, repo_name, repo_index)
 
 # Create a zip archive containing the internal files
 def create_zip_of_files(files):
@@ -351,6 +424,7 @@ async def handle_git_backend_request(request):
     if path_info.endswith("git-receive-pack"):
         repo_name = Path(path_info).parent.name
         repo_path = Path(GIT_PROJECT_ROOT, repo_name)
+        # TODO Better way for transparent .git on local repo directories
         if repo_name.endswith(".git"):
             repo_name = repo_name[:-4]
         atproto_index_create(atproto_index.entries["vcs"].entries["git"], repo_name)
