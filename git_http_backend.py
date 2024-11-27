@@ -4,6 +4,7 @@ import json
 import atexit
 import asyncio
 import base64
+import shutil
 import pprint
 import warnings
 from aiohttp import web
@@ -116,6 +117,7 @@ def update_profile(client, pinned_post):
     )
     proc_result.check_returncode()
 
+# NOTE If you delete the index without unpinning first everything breaks
 if atproto_index.root is None:
     post = client.send_post(text="index")
     update_profile(client, pinned_post=post)
@@ -181,7 +183,21 @@ def atproto_index_read(client, index, depth: int = 100):
 
 def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, data_as_image_hash: str = None):
     if index_entry_key in index.entries:
-        return
+        if data_as_image_hash is not None:
+            hash_alg = data_as_image_hash.split(":", maxsplit=1)[0]
+            hash_value = data_as_image_hash.split(":", maxsplit=1)[1]
+            # Remove old version, fall through to create new version
+            if (
+                hash_alg == index.entries[index_entry_key].blob.hash_alg
+                and hash_value == index.entries[index_entry_key].blob.hash_value
+            ):
+                # Index entry with same data already exists, NOP
+                return False
+            else:
+                client.delete_post(index.entries[index_entry_key].post.uri)
+        else:
+            # Index without data already exists, NOP
+            return False
     parent = models.create_strong_ref(index.post)
     root = models.create_strong_ref(index.root)
     method = client.send_post
@@ -197,15 +213,12 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
         **kwargs,
     )
     index_kwargs = {}
-    if (
-        post.record.embed
-        and post.record.embed.images
-    ):
+    if data_as_image_hash is not None:
         index_kwargs["blob"] = {
-            "hash_alg": post.record.embed.images[0].alt.split(":", maxsplit=1)[0],
-            "hash_value": post.record.embed.images[0].alt.split(":", maxsplit=1)[1],
-            "cid": post.record.embed.images[0].image.ref.link,
-            "did": post.author.did,
+            "hash_alg": data_as_image_hash.split(":", maxsplit=1)[0],
+            "hash_value": data_as_image_hash.split(":", maxsplit=1)[1],
+            "cid": post.cid,
+            "did": post.uri.split("/")[2],
         }
     index.entries[index_entry_key] = index.__class__(
         text=index_entry_key,
@@ -224,11 +237,12 @@ def atproto_index_create(index, index_entry_key, data_as_image: bytes = None, da
         },
         **index_kwargs,
     )
+    return True
 
-# atproto_index_read(client, atproto_index)
+atproto_index_read(client, atproto_index)
 atproto_index_create(atproto_index, "vcs")
 atproto_index_create(atproto_index.entries["vcs"], "git")
-# atproto_index_read(client, atproto_index.entries["vcs"].entries["git"])
+atproto_index_read(client, atproto_index.entries["vcs"].entries["git"])
 
 # Configuration
 GIT_PROJECT_ROOT = args.repos_directory
@@ -252,9 +266,46 @@ def list_git_internal_files(repo_path):
         if file.is_file():
             yield file
 
+# Create a minimal PNG header
+PNG_HEADER = (
+    b'\x89PNG\r\n\x1a\n'  # PNG signature
+    b'\x00\x00\x00\r'     # IHDR chunk length
+    b'IHDR'               # IHDR chunk type
+    b'\x00\x00\x00\x01'   # Width: 1
+    b'\x00\x00\x00\x01'   # Height: 1
+    b'\x08'               # Bit depth: 8
+    b'\x02'               # Color type: Truecolor
+    b'\x00'               # Compression method
+    b'\x00'               # Filter method
+    b'\x00'               # Interlace method
+    b'\x90wS\xde'         # CRC
+    b'\x00\x00\x00\x0a'   # IDAT chunk length
+    b'IDAT'               # IDAT chunk type
+    b'\x78\x9c\x63\x60\x00\x00\x00\x02\x00\x01'  # Compressed data
+    b'\x02\x7e\xe5\x45'   # CRC
+    b'\x00\x00\x00\x00'   # IEND chunk length
+    b'IEND'               # IEND chunk type
+    b'\xaeB`\x82'         # CRC
+)
+
+def extract_zip_from_png(png_zip_data):
+    global PNG_HEADER
+    return png_zip_data[len(PNG_HEADER):]
+
+# Extract zip archive containing the internal files
+def extract_zip_of_files(repo_path, blob, files):
+    zip_buffer = BytesIO(blob)
+    with zipfile.ZipFile(zip_buffer, 'r', zipfile.ZIP_DEFLATED) as zipf:
+        for file in files:
+            local_filepath = repo_path.joinpath(file)
+            local_filepath.parent.mkdir(parents=True, exist_ok=True)
+            local_filepath.write_bytes(b"")
+            local_filepath.chmod(0o600)
+            with zipf.open(file) as zip_filobj, open(local_filepath, "wb") as local_fileobj:
+                shutil.copyfileobj(zip_filobj, local_fileobj)
+
 # TODO Do this directly on the git repos instead of having a repos dir
 
-@snoop
 def download_from_atproto_to_local_repos_directory_git(client, repo_name, index):
     # TODO Context for projects root
     global GIT_PROJECT_ROOT
@@ -267,64 +318,52 @@ def download_from_atproto_to_local_repos_directory_git(client, repo_name, index)
         # TODO Probably should look at path traversal
         internal_file = Path(GIT_PROJECT_ROOT, repo_name, index_entry.text)
         repo_file_path = str(internal_file.relative_to(repo_path))
-        print(f"Ddownloading internal file to {repo_name}: {repo_file_path}")
-        if internal_file.exists():
+        re_download = False
+        if not internal_file.exists():
+            re_download = True
+        else:
             if index_entry.blob.hash_alg not in allowed_hash_algs:
                 raise ValueError(f"{index_entry.blob.hash_alg!r} is not in allowed_hash_algs, offending index node: {pprint.pprint(json.loads(index_entry.model_dump_json()))}")
             hash_instance = hashlib.new(index_entry.blob.hash_alg)
             hash_instance.update(internal_file.read_bytes())
             hash_digest_local = hash_instance.hexdigest()
             if hash_digest_local != index_entry.blob.hash_value:
-                raise ValueError(f"{index_entry.text} {index_entry.blob.hash_alg} mismatch local: {hash_digest_local} != remote: {index_entry.blob.hash_value}")
-        blob = client.com.atproto.sync.get_blob(
-            models.com.atproto.sync.get_blob.Params(
-                cid=index_entry.blob.cid,
-                did=index_entry.blob.did,
-            ),
-        )
-        snoop.pp(blob)
-        # internal_file.write_bytes(blob)
-        # TODO
-        print(f"Successful download of internal file to {repo_name}: {repo_file_path}")
+                warnings.warn(f"{index_entry.text} {index_entry.blob.hash_alg} mismatch local: {hash_digest_local} != remote: {index_entry.blob.hash_value}")
+                re_download = True
+        if not re_download:
+            print(f"Internal file for {repo_name} is up to date: {repo_file_path}")
+        else:
+            print(f"Downloading internal file to {repo_name}: {repo_file_path}")
+            # TODO Timestamps or something
+            blob = client.com.atproto.sync.get_blob(
+                models.com.atproto.sync.get_blob.Params(
+                    cid=index_entry.blob.cid,
+                    did=index_entry.blob.did,
+                ),
+            )
+            zip_data = extract_zip_from_png(blob)
+            extract_zip_of_files(repo_path, zip_data, [index_entry.text])
+            print(f"Successful download of internal file to {repo_name}: {repo_file_path}")
 
 for repo_name, repo_index in atproto_index.entries["vcs"].entries["git"].entries.items():
     download_from_atproto_to_local_repos_directory_git(client, repo_name, repo_index)
 
 # Create a zip archive containing the internal files
-def create_zip_of_files(files):
+def create_zip_of_files(repo_path, files):
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file in files:
-            arcname = str(file.relative_to(file.anchor))
+            arcname = str(file.relative_to(repo_path))
             zipf.write(file, arcname=arcname)
     zip_buffer.seek(0)
     return zip_buffer.read()
 
+
 # Create a PNG image that also contains the zip archive
 def create_png_with_zip(zip_data):
-    # Create a minimal PNG header
-    png_header = (
-        b'\x89PNG\r\n\x1a\n'  # PNG signature
-        b'\x00\x00\x00\r'     # IHDR chunk length
-        b'IHDR'               # IHDR chunk type
-        b'\x00\x00\x00\x01'   # Width: 1
-        b'\x00\x00\x00\x01'   # Height: 1
-        b'\x08'               # Bit depth: 8
-        b'\x02'               # Color type: Truecolor
-        b'\x00'               # Compression method
-        b'\x00'               # Filter method
-        b'\x00'               # Interlace method
-        b'\x90wS\xde'         # CRC
-        b'\x00\x00\x00\x0a'   # IDAT chunk length
-        b'IDAT'               # IDAT chunk type
-        b'\x78\x9c\x63\x60\x00\x00\x00\x02\x00\x01'  # Compressed data
-        b'\x02\x7e\xe5\x45'   # CRC
-        b'\x00\x00\x00\x00'   # IEND chunk length
-        b'IEND'               # IEND chunk type
-        b'\xaeB`\x82'         # CRC
-    )
+    global PNG_HEADER
     # Combine the PNG header and the zip data
-    png_zip_data = png_header + zip_data
+    png_zip_data = PNG_HEADER + zip_data
     return png_zip_data
 
 # Handle Git HTTP Backend requests
@@ -430,10 +469,9 @@ async def handle_git_backend_request(request):
         atproto_index_create(atproto_index.entries["vcs"].entries["git"], repo_name)
         for internal_file in list_git_internal_files(repo_path):
             repo_file_path = str(internal_file.relative_to(repo_path))
-            print(f"Updated internal file in {repo_name}: {repo_file_path}")
 
             # Create zip archive of internal files
-            zip_data = create_zip_of_files([internal_file])
+            zip_data = create_zip_of_files(repo_path, [internal_file])
 
             # Create PNG with embedded zip
             png_zip_data = create_png_with_zip(zip_data)
@@ -448,12 +486,13 @@ async def handle_git_backend_request(request):
             hash_instance = hashlib.new(hash_alg)
             hash_instance.update(internal_file.read_bytes())
             data_as_image_hash = hash_instance.hexdigest()
-            atproto_index_create(
+            if atproto_index_create(
                 atproto_index.entries["vcs"].entries["git"].entries[repo_name],
                 repo_file_path,
                 data_as_image=png_zip_data,
                 data_as_image_hash=f"{hash_alg}:{data_as_image_hash}",
-            )
+            ):
+                print(f"Updated internal file in {repo_name}: {repo_file_path}")
 
     return response
 
