@@ -89,30 +89,30 @@ cat .tools/open-architecture/governance/branches/${BRANCH_NAME}/policies/upstrea
 
 ### Addition of Maintainer
 
-Shorthand
+Shorthand add PGP public
 
 ```bash
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "ADD_DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "ADD_PGP_DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
 ```
 
-Long form
+Long form add PGP public
 
 ```bash
 export BRANCH_NAME="main"
 export POLICY_YAML_PATH=".tools/open-architecture/governance/branches/${BRANCH_NAME}/upstream.yml"
 export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
 export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
-export ADD_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
+export ADD_PGP_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
 export NEXT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.owners.json"
 mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
-echo '[{}]' > "${ADD_DATA_OWNERS_JSON_PATH}"
-jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
-jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
-jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${ADD_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
-cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DATA_OWNERS_JSON_PATH}" | jq
-python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "Maintainers of branch_name branch" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq -i --indent 2 --prettyPrint '.data.owners |= . + load(strenv(ADD_DATA_OWNERS_JSON_PATH))' "${POLICY_YAML_PATH}"
+echo '[{}]' > "${ADD_PGP_DATA_OWNERS_JSON_PATH}"
+jq --arg actor "$(git config user.actor)" '.[0].actors = [$actor]' "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg public_key "$(gpg --export --armor $(git config user.signingkey))" '.[0].keys = [$public_key]' "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_PGP_DATA_OWNERS_JSON_PATH}" | jq
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "Maintainers of branch_name branch" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq -i --indent 2 --prettyPrint '.data.owners |= . + load(strenv(ADD_PGP_DATA_OWNERS_JSON_PATH))' "${POLICY_YAML_PATH}"
 # TODO nonce, cnonce? branches, maintainer commits
 ```
 
