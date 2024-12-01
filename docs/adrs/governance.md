@@ -116,6 +116,35 @@ python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.As
 # TODO nonce, cnonce? branches, maintainer commits
 ```
 
+Shorthand add `did:plc`
+
+```bash
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "ADD_DID_PLC_DATA_OWNERS_JSON_PATH" --arg excludeString "bash -xe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | bash -xe
+```
+
+Long form add `did:plc`
+
+```bash
+export BRANCH_NAME="main"
+export POLICY_YAML_PATH=".tools/open-architecture/governance/branches/${BRANCH_NAME}/upstream.yml"
+export LOCAL_OPERATION_CACHE_SHA="$(head -n 1000 /dev/urandom | sha384sum - | awk '{print $1}')"
+export LOCAL_OPERATION_CACHE_DIR="cache/operations/${LOCAL_OPERATION_CACHE_SHA}"
+export ADD_DID_PLC_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/data.owners.json"
+export NEXT_DATA_OWNERS_JSON_PATH="${LOCAL_OPERATION_CACHE_DIR}/next.data.owners.json"
+export ATPROTO_HANDLE="$(git config user.atproto)"
+export ATPROTO_BASE_URL="$(echo ${ATPROTO_HANDLE} | sed -e 's/\w*\.//')"
+mkdir -pv "${LOCAL_OPERATION_CACHE_DIR}"
+echo '[{}]' > "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}"
+jq --arg atproto "$(git config user.atproto)" '.[0].atproto = [$atproto]' "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg email "$(git config user.email)" '.[0].emails = [$email]' "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | jq
+jq --arg did_plc "$(curl -s "https://${ATPROTO_BASE_URL}/xrpc/com.atproto.identity.resolveHandle?handle=${ATPROTO_HANDLE}" | jq -r .did)" '.[0].keys = [$did_plc]' "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | tee "${NEXT_DATA_OWNERS_JSON_PATH}"
+cat "${NEXT_DATA_OWNERS_JSON_PATH}" | tee "${ADD_DID_PLC_DATA_OWNERS_JSON_PATH}" | jq
+python -m mistletoe docs/adrs/governance.md --renderer mistletoe.ast_renderer.AstRenderer | jq -r --arg searchString "Maintainers of branch_name branch" --arg excludeString "mistletoe" '.. | strings | select(contains($searchString) and (contains($excludeString) | not))' | yq -i --indent 2 --prettyPrint '.data.owners |= . + load(strenv(ADD_DID_PLC_DATA_OWNERS_JSON_PATH))' "${POLICY_YAML_PATH}"
+# TODO nonce, cnonce? branches, maintainer commits
+```
+
 ### Template
 
 ```yaml
